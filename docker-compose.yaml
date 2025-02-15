@@ -17,14 +17,16 @@ services:
     image: ghcr.io/open-webui/open-webui:${WEBUI_DOCKER_TAG-main}
     container_name: open-webui
     volumes:
-      - open-webui:/app/backend/data
+      - /mnt/dev-data/guidely-webui:/app/backend/data
     depends_on:
       - ollama
     ports:
-      - ${OPEN_WEBUI_PORT-3000}:8080
+      - ${OPEN_WEBUI_PORT-3200}:9090
     environment:
       - 'OLLAMA_BASE_URL=http://ollama:11434'
       - 'WEBUI_SECRET_KEY='
+      - 'WEBUI_NAME=Guidely'
+      - 'HF_ENDPOINT=https://hf-mirror.com'
     extra_hosts:
       - host.docker.internal:host-gateway
     restart: unless-stopped
