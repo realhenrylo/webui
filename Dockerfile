@@ -35,10 +35,9 @@ RUN npm run build
 
 ######## WebUI backend ########
 FROM python:3.11-slim-bookworm AS base
-
 # Use args
 ARG USE_CUDA
-ARG USE_OLLAMA
+ARG USE_OLLAMA=false
 ARG USE_CUDA_VER
 ARG USE_EMBEDDING_MODEL
 ARG USE_RERANKING_MODEL
@@ -48,8 +47,7 @@ ARG GID
 ## Basis ##
 ENV ENV=prod \
     PORT=8080 \
-    # pass build args to the build
-    USE_OLLAMA_DOCKER=${USE_OLLAMA} \
+    USE_OLLAMA_DOCKER=false \
     USE_CUDA_DOCKER=${USE_CUDA} \
     USE_CUDA_DOCKER_VER=${USE_CUDA_VER} \
     USE_EMBEDDING_MODEL_DOCKER=${USE_EMBEDDING_MODEL} \
