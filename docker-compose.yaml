@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: ghcr.io/open-webui/open-webui:${WEBUI_DOCKER_TAG-main}
+    image: haoyu99/noumena_guidely:main
     container_name: guidely-webui
     volumes:
       - /mnt/dev-data/guidely-webui:/app/backend/data
