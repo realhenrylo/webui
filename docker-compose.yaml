@@ -1,5 +1,5 @@
 services:
-  open-webui:
+  guidely-webui:
     build:
       context: .
       dockerfile: Dockerfile
