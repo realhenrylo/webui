@@ -553,6 +553,7 @@ async def generate_chat_completion(
     idx = 0
 
     payload = {**form_data}
+    log.info(payload)
     metadata = payload.pop("metadata", None)
 
     model_id = form_data.get("model")
@@ -636,7 +637,7 @@ async def generate_chat_completion(
 
     # Convert the modified body back to JSON
     payload = json.dumps(payload)
-
+    log.info(payload)
     r = None
     session = None
     streaming = False
