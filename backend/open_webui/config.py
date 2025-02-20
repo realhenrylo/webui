@@ -1951,7 +1951,7 @@ RAG_WEB_SEARCH_CONCURRENT_REQUESTS = PersistentConfig(
 RAG_WEB_LOADER_ENGINE = PersistentConfig(
     "RAG_WEB_LOADER_ENGINE",
     "rag.web.loader.engine",
-    os.environ.get("RAG_WEB_LOADER_ENGINE", "safe_web"),
+    os.environ.get("RAG_WEB_LOADER_ENGINE", "jina"),
 )
 
 RAG_WEB_SEARCH_TRUST_ENV = PersistentConfig(

@@ -1366,8 +1366,6 @@ async def process_web_search(
             verify_ssl=request.app.state.config.ENABLE_RAG_WEB_LOADER_SSL_VERIFICATION,
             requests_per_second=request.app.state.config.RAG_WEB_SEARCH_CONCURRENT_REQUESTS,
             trust_env=request.app.state.config.RAG_WEB_SEARCH_TRUST_ENV,
-            use_proxy=True
-
         )
         docs = await loader.aload()
 
