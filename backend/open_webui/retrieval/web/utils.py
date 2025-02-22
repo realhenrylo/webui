@@ -20,10 +20,12 @@ from typing import (
 )
 import aiohttp
 import certifi
+import requests
 import validators
 from langchain_community.document_loaders import PlaywrightURLLoader, WebBaseLoader
 from langchain_community.document_loaders.firecrawl import FireCrawlLoader
 from langchain_community.document_loaders.base import BaseLoader
+from langchain_community.document_loaders.web_base import _build_metadata
 from langchain_core.documents import Document
 from open_webui.constants import ERROR_MESSAGES
 from open_webui.config import (
@@ -521,7 +523,7 @@ class JinaWebBaseLoader(WebBaseLoader):
                     if not self.session.verify:
                         kwargs["ssl"] = False
 
-                    if "uc.cn" in url:  # 检查是否为 uc.cn 链接
+                    if "uc.cn" in url or "baijiahao" in url:  #
                         # 使用第一段代码（直接请求）
                         api_url = "https://gpts.webpilot.ai/api/read"  # 使用指定的 API URL
                         headers = {"Content-Type": "application/json", "WebPilot-Friend-UID": "0"}  # 使用指定的 headers
@@ -592,25 +594,44 @@ class JinaWebBaseLoader(WebBaseLoader):
         """Lazy load text from the url(s) in web_path with error handling."""
         for path in self.web_paths:
             try:
-                soup = self._scrape(path, bs_kwargs=self.bs_kwargs)
-                text = soup.get_text(**self.bs_get_text_kwargs)
-
-                # Build metadata
-                metadata = {"source": path}
-                if title := soup.find("title"):
-                    metadata["title"] = title.get_text()
-                if description := soup.find("meta", attrs={"name": "description"}):
-                    metadata["description"] = description.get(
-                        "content", "No description found."
+                if "uc.cn" in path or "baijiahao" in path:
+                    api_url = "https://gpts.webpilot.ai/api/read"
+                    headers = {"Content-Type": "application/json", "WebPilot-Friend-UID": "0"}
+                    # 使用 self.session.post
+                    response = self.session.post(
+                        api_url,
+                        headers=headers,
+                        json={
+                            "link": path,
+                            "ur": "summary of the page",
+                            "lp": True,
+                            "rt": False,
+                            "l": "en",
+                        },
+                        **self.requests_kwargs  # 传递 requests_kwargs
                     )
-                if html := soup.find("html"):
-                    metadata["language"] = html.get("lang", "No language found.")
+                    response.raise_for_status()
+                    result = response.json()
+                    result.pop("rules", None)
+                    content = json.dumps(result, ensure_ascii=False)
+                    soup = self._unpack_fetch_results([content], [path])[0]
+                else:
+                    proxy_url = f"https://r.jina.ai/{path}"
+                    headers = self.session.headers.copy()
+                    headers.update(
+                        {"Authorization": "Bearer jina_a4c72cef1d2c497b9745070728f1ff78CHIvjW7MN9olfHItmiEvXiZ0Mj3a"})
+                    # 使用 self.session.get
+                    response = self.session.get(proxy_url, headers=headers, **self.requests_kwargs)
+                    response.raise_for_status()
+                    soup = self._unpack_fetch_results([response.text], [path])[0]
 
+                text = soup.get_text(**self.bs_get_text_kwargs)
+                metadata = _build_metadata(soup, path)
                 yield Document(page_content=text, metadata=metadata)
+
             except Exception as e:
                 # Log the error and continue with the next URL
                 log.error(f"Error loading {path}: {e}")
-
     async def alazy_load(self) -> AsyncIterator[Document]:
         """Async lazy load text from the url(s) in web_path."""
         results = await self.ascrape_all(self.web_paths)

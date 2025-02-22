@@ -14,6 +14,7 @@ from open_webui.config import CACHE_DIR
 from open_webui.constants import ERROR_MESSAGES
 from open_webui.env import ENABLE_FORWARD_USER_INFO_HEADERS, SRC_LOG_LEVELS
 from open_webui.routers.files import upload_file
+from open_webui.routers.tasks import generate_image_prompt
 from open_webui.utils.auth import get_admin_user, get_verified_user
 from open_webui.utils.images.comfyui import (
     ComfyUIGenerateImageForm,
@@ -477,21 +478,67 @@ async def image_generations(
                 headers["X-OpenWebUI-User-Email"] = user.email
                 headers["X-OpenWebUI-User-Role"] = user.role
 
-            data = {
-                "model": (
-                    request.app.state.config.IMAGE_GENERATION_MODEL
-                    if request.app.state.config.IMAGE_GENERATION_MODEL != ""
-                    else "dall-e-2"
-                ),
-                "prompt": form_data.prompt,
-                "n": form_data.n,
-                "size": (
-                    form_data.size
-                    if form_data.size
-                    else request.app.state.config.IMAGE_SIZE
-                ),
-                "response_format": "b64_json",
-            }
+
+
+            # 新增对jimeng类型的模型处理
+            # 图片生成可能从对话中唤起，会将全部对话内容作为prompt输入
+            # 如果form_data.prompt 长度大于50 则重新生成一次prompt
+            prompt = form_data.prompt
+            if len(prompt) > 200:
+                prompt = [{'content': prompt, 'role': 'user'}]
+                res = await generate_image_prompt(
+                    request,
+                    {
+                        "model": request.app.state.config.TASK_MODEL_EXTERNAL,
+                        "messages": prompt
+                    },
+                    user,
+                )
+                response = res["choices"][0]["message"]["content"]
+
+                try:
+                    bracket_start = response.find("{")
+                    bracket_end = response.rfind("}") + 1
+
+                    if bracket_start == -1 or bracket_end == -1:
+                        raise Exception("No JSON object found in the response")
+
+                    response = response[bracket_start:bracket_end]
+                    response = json.loads(response)
+                    prompt = response.get("prompt", [])
+                except Exception as e:
+                    raise ValueError("Prompt Generate error")
+
+            if request.app.state.config.IMAGE_GENERATION_MODEL == "jimeng-2.1":
+                log.info(prompt)
+                data = {
+                    "model": "jimeng-2.1",
+                    "prompt": prompt,
+                    "negativePrompt": "",
+                    "width": width,
+                    "height": height,
+                    # 精细度 默认0.5
+                    "sample_strength": 0.5,
+                }
+
+
+            else:
+                # 原有 OpenAI 模型 (dall-e-2 等) 的 data 构建逻辑
+                data = {
+                    "model": (
+                        request.app.state.config.IMAGE_GENERATION_MODEL
+                        if request.app.state.config.IMAGE_GENERATION_MODEL != ""
+                        else "dall-e-2"
+                    ),
+                    "prompt": form_data.prompt,
+                    "n": form_data.n,
+                    "size": (
+                        form_data.size
+                        if form_data.size
+                        else request.app.state.config.IMAGE_SIZE
+                    ),
+                    "response_format": "b64_json",
+                }
 
             # Use asyncio.to_thread for the requests.post call
             r = await asyncio.to_thread(
@@ -506,10 +553,15 @@ async def image_generations(
 
             images = []
 
-            for image in res["data"]:
-                image_data, content_type = load_b64_image_data(image["b64_json"])
-                url = upload_image(request, data, image_data, content_type, user)
-                images.append({"url": url})
+            if request.app.state.config.IMAGE_GENERATION_MODEL == "jimeng-2.1":
+                for image_data in res["data"]:
+                    images.append({"url": image_data["url"]})
+
+            else:
+                for image in res["data"]:
+                    image_data, content_type = load_b64_image_data(image["b64_json"])
+                    url = upload_image(request, data, image_data, content_type, user)
+                    images.append({"url": url})
             return images
 
         elif request.app.state.config.IMAGE_GENERATION_ENGINE == "gemini":

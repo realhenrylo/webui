@@ -7,6 +7,7 @@ import logging
 import re
 
 from open_webui.utils.chat import generate_chat_completion
+from open_webui.utils.models import get_all_models
 from open_webui.utils.task import (
     title_generation_template,
     query_generation_template,
@@ -309,6 +310,8 @@ async def generate_image_prompt(
             request.state.model["id"]: request.state.model,
         }
     else:
+        if not request.app.state.MODELS:
+            await get_all_models(request)
         models = request.app.state.MODELS
 
     model_id = form_data["model"]
