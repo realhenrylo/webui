@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import uuid
+import base64
 from typing import Optional
 
 import aiohttp
@@ -199,6 +200,47 @@ class JupyterCodeExecuter:
         self.result.stderr = stderr.strip()
         self.result.result = "\n".join(result).strip() if result else ""
 
+    async def upload_file(
+            self, local_file_path: str, remote_path: str = "", filename: str = ""
+    ) -> bool:
+        """
+        Upload a file to the Jupyter server
+
+        :param local_file_path: Path to the local file to upload
+        :param remote_path: Remote directory path (default: server root)
+        :param filename: Filename to upload
+        :return: Boolean indicating success
+        """
+        try:
+            # Ensure remote_path doesn't have leading/trailing slashes
+            remote_path = remote_path.strip("/")
+
+            # Open file and prepare for upload
+            with open(local_file_path, "rb") as file:
+                file_content = file.read()
+
+            # Get filename from path
+
+            # Create API endpoint URL (with or without directory)
+            endpoint = f"/api/contents/{remote_path}/{filename}" if remote_path else f"/api/contents/{filename}"
+
+            # Upload file
+            async with self.session.put(
+                    url=endpoint,
+                    params=self.params,
+                    json={
+                        "content": base64.b64encode(file_content).decode("utf-8"),
+                        "type": "file",
+                        "format": "base64"
+                    }
+            ) as response:
+                response.raise_for_status()
+                return True
+
+        except Exception as err:
+            logger.exception(f"File upload failed: {err}")
+            return False
+
 
 async def execute_code_jupyter(
     base_url: str, code: str, token: str = "", password: str = "", timeout: int = 60
@@ -208,3 +250,35 @@ async def execute_code_jupyter(
     ) as executor:
         result = await executor.run()
         return result.model_dump()
+
+
+async def upload_file_jupyter(
+        base_url: str,
+        local_file_path: str,
+        remote_path: str = "",
+        file_name: str = "",
+        token: str = "",
+        password: str = ""
+) -> bool:
+    """
+    Upload a file to Jupyter server
+
+    :param base_url: Jupyter server URL (e.g., "http://localhost:8888")
+    :param local_file_path: Path to the local file to upload
+    :param remote_path: Remote directory path (default: server root)
+    :param file_name: File name (default: "")
+    :param token: Jupyter authentication token (optional)
+    :param password: Jupyter password (optional)
+    :return: Boolean indicating success
+    """
+    async with JupyterCodeExecuter(
+            base_url, "", token, password
+    ) as executor:
+        try:
+            # 先完成登录认证
+            await executor.sign_in()
+            # 再执行文件上传
+            return await executor.upload_file(local_file_path, remote_path, file_name)
+        except Exception as err:
+            logger.exception(f"File upload process failed: {err}")
+            return False

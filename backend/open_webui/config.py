@@ -1491,18 +1491,19 @@ CODE_INTERPRETER_JUPYTER_TIMEOUT = PersistentConfig(
 
 DEFAULT_CODE_INTERPRETER_PROMPT = """
 #### Tools Available
-
 1. **Code Interpreter**: `<code_interpreter type="code" lang="python"></code_interpreter>`
-   - You have access to a Python shell that runs directly in the user's browser, enabling fast execution of code for analysis, calculations, or problem-solving.  Use it in this response.
-   - The Python code you write can incorporate a wide array of libraries, handle data manipulation or visualization, perform API calls for web-related tasks, or tackle virtually any computational challenge. Use this flexibility to **think outside the box, craft elegant solutions, and harness Python's full potential**.
-   - To use it, **you must enclose your code within `<code_interpreter type="code" lang="python">` XML tags** and stop right away. If you don't, the code won't execute. Do NOT use triple backticks.
-   - When coding, **always aim to print meaningful outputs** (e.g., results, tables, summaries, or visuals) to better interpret and verify the findings. Avoid relying on implicit outputs; prioritize explicit and clear print statements so the results are effectively communicated to the user.  
-   - After obtaining the printed output, **always provide a concise analysis, interpretation, or next steps to help the user understand the findings or refine the outcome further.**  
-   - If the results are unclear, unexpected, or require validation, refine the code and execute it again as needed. Always aim to deliver meaningful insights from the results, iterating if necessary.  
+   - You have access to a Python shell that runs directly in your browser, enabling fast execution of code for analysis, calculations, or problem-solving. Use it in this response. **This tool has the ability to access and process files located in the root directory. You will be provided with a list of filenames, and these files are all located in the root directory.**
+   - The Python code you write can incorporate a wide array of libraries, handle data manipulation or visualization, perform API calls for web-related tasks, or tackle virtually any computational challenge. Use this flexibility to **think outside the box, craft elegant solutions, and harness Python's full potential**. **Specifically, you can read and analyze the content of the files provided in the filename list, all of which are in the root directory.**
+   - To use it, **you must enclose your code within `<code_interpreter type="code" lang="python">` XML tags** and stop right away. If you don't, the code won't execute. Do NOT use triple backticks. **Ensure that the code within the `<code_interpreter>` tags is complete and directly executable.**
+   - **Important: Each `<code_interpreter>` block is executed in isolation. This means that variables and state are not automatically preserved between consecutive code blocks.  If your task requires multiple steps that depend on each other, you must ensure that each `<code_interpreter>` block contains all the necessary code to execute independently, including any variable definitions or setup required for that specific block. If you need to use results from a previous code block, you will need to regenerate or redefine them in the new code block.**
+   - **When generating images using the Code Interpreter, ensure that all text elements within the image (e.g., titles, axis labels, legends, annotations) are in English. DO NOT save images to local files; the Code Interpreter will directly print image links as output when you create plots or visualizations.
+   - When coding, **always aim to print meaningful outputs** (e.g., results, tables, summaries, or visuals) to better interpret and verify the findings. Avoid relying on implicit outputs; prioritize explicit and clear print statements so the results are effectively communicated to the user.
+   - After obtaining the printed output, **always provide a concise analysis, interpretation, or next steps to help the user understand the findings or refine the outcome further.**
    - **If a link to an image, audio, or any file is provided in markdown format in the output, ALWAYS regurgitate word for word, explicitly display it as part of the response to ensure the user can access it easily, do NOT change the link.**
-   - All responses should be communicated in the chat's primary language, ensuring seamless understanding. If the chat is multilingual, default to English for clarity.
-
-Ensure that the tools are effectively utilized to achieve the highest-quality analysis for the user."""
+   - If the results are unclear, unexpected, or require validation, refine the code and execute it again as needed. Always aim to deliver meaningful insights from the results, iterating if necessary.
+Ensure that the tools are effectively utilized to achieve the highest-quality analysis for the user.
+**Available Files:**
+"""
 
 
 ####################################

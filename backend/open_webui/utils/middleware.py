@@ -76,14 +76,14 @@ from open_webui.utils.filter import (
     get_sorted_filter_ids,
     process_filter_functions,
 )
-from open_webui.utils.code_interpreter import execute_code_jupyter
+from open_webui.utils.code_interpreter import execute_code_jupyter, upload_file_jupyter
 
 from open_webui.tasks import create_task
 
 from open_webui.config import (
     CACHE_DIR,
     DEFAULT_TOOLS_FUNCTION_CALLING_PROMPT_TEMPLATE,
-    DEFAULT_CODE_INTERPRETER_PROMPT,
+    DEFAULT_CODE_INTERPRETER_PROMPT, file_path,
 )
 from open_webui.env import (
     SRC_LOG_LEVELS,
@@ -622,6 +622,37 @@ def apply_params_to_form_data(form_data, model):
     return form_data
 
 
+def get_file_info_list(files):
+    """
+    Extract a list of file information from the files data structure.
+
+    Parameters:
+        files: List of file data structures
+
+    Returns:
+        A list containing file information, each item including file_path, original name, and upload name
+    """
+    if not files:
+        return []
+
+    file_info_list = []
+    for f in files:
+        if f.get('type') == 'file':
+            file_id = f.get('id')
+            upload_name = f.get('name')  # Upload name
+            if file_id and upload_name:
+                # Construct file path
+                file_path = f"data/uploads/{file_id}_{upload_name}"
+                # Original name
+                original_name = f"{file_id}_{upload_name}"
+                file_info_list.append({
+                    'file_path': file_path,  # Full file path
+                    'original_name': original_name,  # Original name (with ID)
+                    'upload_name': upload_name  # Upload name
+                })
+    return file_info_list
+
+
 async def process_chat_payload(request, form_data, user, metadata, model):
 
     form_data = apply_params_to_form_data(form_data, model)
@@ -702,11 +733,13 @@ async def process_chat_payload(request, form_data, user, metadata, model):
 
         files = form_data.get("files", [])
         files.extend(knowledge_files)
+        # 可以从file中获取到文件的路径
         form_data["files"] = files
 
     variables = form_data.pop("variables", None)
 
     # Process the form_data through the pipeline
+    # TODO: 未来可以通过pipeline的方式实现上传文件
     try:
         form_data = await process_pipeline_inlet_filter(
             request, form_data, user, models
@@ -730,6 +763,13 @@ async def process_chat_payload(request, form_data, user, metadata, model):
     except Exception as e:
         raise Exception(f"Error: {e}")
 
+    files = form_data.pop("files", None)
+
+    # Remove files duplicates
+    if files:
+        files = list({json.dumps(f, sort_keys=True): f for f in files}.values())
+
+    is_code_interpreter_enabled = False
     features = form_data.pop("features", None)
     if features:
         if "web_search" in features and features["web_search"]:
@@ -743,6 +783,41 @@ async def process_chat_payload(request, form_data, user, metadata, model):
             )
 
         if "code_interpreter" in features and features["code_interpreter"]:
+
+            # Start uploading files
+            is_code_interpreter_enabled = True
+            upload_files = get_file_info_list(files)
+            successful_uploads = []
+            # default root path
+            remote_path = '/'
+            for file_info in upload_files:
+                local_file_path = file_info['file_path']
+                file_name = file_info['upload_name']
+                try:
+                    success = await upload_file_jupyter(
+                        request.app.state.config.CODE_INTERPRETER_JUPYTER_URL,
+                        local_file_path,  # Local file path
+                        remote_path,  # Remote target path (optional)
+                        file_name,
+                        (
+                            request.app.state.config.CODE_INTERPRETER_JUPYTER_AUTH_TOKEN
+                            if request.app.state.config.CODE_INTERPRETER_JUPYTER_AUTH == "token"
+                            else None
+                        ),
+                        (
+                            request.app.state.config.CODE_INTERPRETER_JUPYTER_AUTH_PASSWORD
+                            if request.app.state.config.CODE_INTERPRETER_JUPYTER_AUTH == "password"
+                            else None
+                        )
+                    )
+                    if success:
+                        successful_uploads.append(file_name)
+                        log.info(f"File {local_file_path} successfully uploaded to {remote_path}")
+                    else:
+                        log.error(f"Failed to upload file {local_file_path}")
+                except Exception as e:
+                    log.error(f"Error uploading file {file_name}: {str(e)}")
+
             form_data["messages"] = add_or_update_user_message(
                 (
                     request.app.state.config.CODE_INTERPRETER_PROMPT_TEMPLATE
@@ -751,13 +826,15 @@ async def process_chat_payload(request, form_data, user, metadata, model):
                 ),
                 form_data["messages"],
             )
+            # 在原来prompt基础上增加文件列表
+            file_list_str  = "**Available Files:**" + str(successful_uploads)
+            form_data["messages"] = add_or_update_user_message(file_list_str ,
+                form_data["messages"],
+            )
+
+
 
     tool_ids = form_data.pop("tool_ids", None)
-    files = form_data.pop("files", None)
-
-    # Remove files duplicates
-    if files:
-        files = list({json.dumps(f, sort_keys=True): f for f in files}.values())
 
     metadata = {
         **metadata,
@@ -802,11 +879,13 @@ async def process_chat_payload(request, form_data, user, metadata, model):
             except Exception as e:
                 log.exception(e)
 
-    try:
-        form_data, flags = await chat_completion_files_handler(request, form_data, user)
-        sources.extend(flags.get("sources", []))
-    except Exception as e:
-        log.exception(e)
+    # 如果代码解释器开启 则跳过文件检索的过程：
+    if not is_code_interpreter_enabled :
+        try:
+            form_data, flags = await chat_completion_files_handler(request, form_data, user)
+            sources.extend(flags.get("sources", []))
+        except Exception as e:
+            log.exception(e)
 
     # If context is not empty, insert it into the messages
     if len(sources) > 0:
@@ -974,7 +1053,7 @@ async def process_chat_response(
                             )
                         except Exception as e:
                             pass
-
+    # 方法开始
     event_emitter = None
     event_caller = None
     if (
@@ -1024,7 +1103,7 @@ async def process_chat_response(
                             },
                         }
                     )
-
+                    # 存入数据库
                     # Save message in the database
                     Chats.upsert_message_to_chat_by_id_and_message_id(
                         metadata["chat_id"],
@@ -1033,7 +1112,7 @@ async def process_chat_response(
                             "content": content,
                         },
                     )
-
+                    # 发送webhook通知
                     # Send a webhook notification if the user is not active
                     if get_active_status_by_user_id(user.id) is None:
                         webhook_url = Users.get_user_webhook_url_by_id(user.id)
@@ -1076,6 +1155,7 @@ async def process_chat_response(
         "__request__": request,
         "__model__": model,
     }
+    # 获取filter
     filter_functions = [
         Functions.get_function_by_id(filter_id)
         for filter_id in get_sorted_filter_ids(model)
@@ -1170,7 +1250,7 @@ async def process_chat_response(
                                 content = f'{content}\n<{block["start_tag"]}>{block["content"]}<{block["end_tag"]}>\n'
                             else:
                                 content = f'{content}\n<details type="reasoning" done="false">\n<summary>Thinking…</summary>\n{reasoning_display_content}\n</details>\n'
-
+                    # 这里处理代码解释器的逻辑
                     elif block["type"] == "code_interpreter":
                         attributes = block.get("attributes", {})
                         output = block.get("output", None)
@@ -1426,6 +1506,7 @@ async def process_chat_response(
             # We might want to disable this by default
             DETECT_REASONING = True
             DETECT_SOLUTION = True
+            # code_interpreter 相关
             DETECT_CODE_INTERPRETER = metadata.get("features", {}).get(
                 "code_interpreter", False
             )
@@ -1461,9 +1542,9 @@ async def process_chat_response(
                             **event,
                         },
                     )
-
+                # 再次处理返回的流
                 async def stream_body_handler(response):
-                    nonlocal content
+                    content = ""
                     nonlocal content_blocks
 
                     response_tool_calls = []
@@ -1873,6 +1954,7 @@ async def process_chat_response(
                                     request.app.state.config.CODE_INTERPRETER_ENGINE
                                     == "jupyter"
                                 ):
+                                    # 运行代码得到输出结果
                                     output = await execute_code_jupyter(
                                         request.app.state.config.CODE_INTERPRETER_JUPYTER_URL,
                                         code,
@@ -1988,6 +2070,7 @@ async def process_chat_response(
                         )
 
                         try:
+                            # 中间工具执行完成后再次调用对话接口
                             res = await generate_chat_completion(
                                 request,
                                 {
@@ -1997,10 +2080,16 @@ async def process_chat_response(
                                         *form_data["messages"],
                                         {
                                             "role": "assistant",
-                                            "content": serialize_content_blocks(
-                                                content_blocks, raw=True
-                                            ),
+                                            "content": serialize_content_blocks(content_blocks, raw=True),
                                         },
+                                        {
+                                            "role": "user",
+                                            "content": "Based on the analysis provided above, please continue with further analysis if needed. If the analysis is complete, "
+                                                       "no additional analysis is required. If there are any images in the analysis results, "
+                                                       "please explain those images first and provide their markdown format links (e.g., ![description](image_url))."
+                                                       "Please respond in the same language as the question was asked. For any code-generated visualizations, ensure all "
+                                                       "chart legends, labels, and titles are in English regardless of the response language."
+                                        }
                                     ],
                                 },
                                 user,
@@ -2073,6 +2162,7 @@ async def process_chat_response(
                 await response.background()
 
         # background_tasks.add_task(post_response_handler, response, events)
+        # 开启后台任务
         task_id, _ = create_task(post_response_handler(response, events))
         return {"status": True, "task_id": task_id}
 
