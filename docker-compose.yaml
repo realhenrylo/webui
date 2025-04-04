@@ -8,11 +8,12 @@ services:
     volumes:
       - /mnt/dev-data/guidely-webui:/app/backend/data
     ports:
-      - ${OPEN_WEBUI_PORT-3200}:8080
+      - "3200:8080"
     environment:
-      - 'WEBUI_SECRET_KEY='
-      - 'WEBUI_NAME=Guidely'
-      - 'HF_ENDPOINT=https://hf-mirror.com'
+      - HF_ENDPOINT=https://hf-mirror.com
+      - DATABASE_URL=postgres://postgres:noumena_guidely@10.0.16.5:3600/guidely
+      - DATABASE_POOL_SIZE=10
+      - DATABASE_POOL_MAX_OVERFLOW=20
     extra_hosts:
       - host.docker.internal:host-gateway
     restart: unless-stopped
