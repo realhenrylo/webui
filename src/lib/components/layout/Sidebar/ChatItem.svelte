@@ -51,17 +51,17 @@
 
 	let mouseOver = false;
 	let draggable = false;
-	$: if (mouseOver) {
-		loadChat();
-	}
+	// $: if (mouseOver) {
+	// 	loadChat();
+	// }
 
-	const loadChat = async () => {
-		if (!chat) {
-			draggable = false;
-			chat = await getChatById(localStorage.token, id);
-			draggable = true;
-		}
-	};
+	// const loadChat = async () => {
+	// 	if (!chat) {
+	// 		draggable = false;
+	// 		chat = await getChatById(localStorage.token, id);
+	// 		draggable = true;
+	// 	}
+	// };
 
 	let showShareChatModal = false;
 	let confirmEdit = false;
